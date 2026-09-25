@@ -603,6 +603,12 @@ final class Tab: ObservableObject, Identifiable {
         controller.addUserScript(
             WKUserScript(source: PasskeyRelay.bridge, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: Web.world)
         )
+        // The Mac's own microphone rather than whatever else is connected
+        // (see Microphone.swift). In the page's world: it is the page's
+        // getUserMedia that is being answered.
+        controller.addUserScript(
+            WKUserScript(source: BuiltInMic.script, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
+        )
         guard !css.isEmpty else { return }
         controller.addUserScript(
             WKUserScript(source: Veiling.style(css), injectionTime: .atDocumentStart, forMainFrameOnly: true, in: Web.world)

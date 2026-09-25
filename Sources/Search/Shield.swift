@@ -67,6 +67,32 @@ final class Shield: ObservableObject {
         "mixpanel.com", "amplitude.com", "segment.com", "segment.io",
         "branch.io", "appsflyer.com", "adjust.com", "analytics.tiktok.com",
         "connect.facebook.net", "ads-twitter.com", "analytics.twitter.com",
+        // Ad exchanges, networks and the pop-up and pop-under kind.
+        "2mdn.net", "adform.net", "adformdn.com", "admob.com", "adcolony.com",
+        "applovin.com", "vungle.com", "inmobi.com", "smaato.net", "media.net",
+        "contextweb.com", "spotxchange.com", "spotx.tv", "springserve.com",
+        "tremorhub.com", "lijit.com", "sovrn.com", "gumgum.com", "triplelift.com",
+        "3lift.com", "sonobi.com", "emxdgt.com", "yieldmo.com", "yieldlab.net",
+        "advertising.com", "zedo.com", "revcontent.com", "mgid.com", "adblade.com",
+        "zergnet.com", "propellerads.com", "popads.net", "popcash.net",
+        "adsterra.com", "exoclick.com", "trafficjunky.net", "juicyads.com",
+        "hilltopads.net", "adcash.com", "onclickads.net", "clickadu.com",
+        "bidvertiser.com", "infolinks.com", "adskeeper.com", "adskeeper.co.uk",
+        "a-ads.com", "undertone.com", "conversantmedia.com", "dotomi.com",
+        "yieldmanager.com", "ads.yahoo.com", "adtech.de", "serving-sys.com",
+        "flashtalking.com", "innovid.com", "adsafeprotected.com", "doubleverify.com",
+        "moatpixel.com", "adgrx.com", "simpli.fi", "steelhousemedia.com",
+        "ads.linkedin.com", "ads.reddit.com", "ads.pinterest.com",
+        // Data brokers and cross-site tracking.
+        "mathtag.com", "turn.com", "rlcdn.com", "bluekai.com", "krxd.net",
+        "everesttech.net", "agkn.com", "tapad.com", "crwdcntrl.net",
+        "exelator.com", "eyeota.net", "liadm.com", "id5-sync.com",
+        "media6degrees.com", "quantcount.com", "imrworldwide.com",
+        "bat.bing.com", "ct.pinterest.com", "tr.snapchat.com", "mc.yandex.ru",
+        "analytics.yahoo.com", "nr-data.net",
+        // Session recorders and analytics that follow you across sites.
+        "hotjar.io", "heapanalytics.com", "kissmetrics.com", "crazyegg.com",
+        "luckyorange.com", "inspectlet.com", "smartlook.com",
     ]
 
     /// The few slots that are reliably an advertisement and nothing else. Kept
@@ -77,6 +103,10 @@ final class Shield: ObservableObject {
         "[id^=\"div-gpt-ad\"]", "[id^=\"taboola-\"]", "#taboola-below-article",
         "iframe[src*=\"doubleclick.net\"]", "iframe[src*=\"googlesyndication\"]",
         "iframe[src*=\"amazon-adsystem\"]",
+        "iframe[id^=\"google_ads_iframe\"]", "[id^=\"gpt-ad-\"]", "amp-ad",
+        "amp-embed[type=\"taboola\"]", ".OUTBRAIN", "[data-widget-id^=\"outbrain\"]",
+        "iframe[src*=\"adnxs.com\"]", "iframe[src*=\"criteo\"]",
+        ".trc_rbox_container", ".mgid-widget",
     ]
 
     func compile() {
@@ -108,8 +138,40 @@ final class Shield: ObservableObject {
             trouble = "WebKit has nowhere to compile it"
             return
         }
+        // Named after what is in it, so a list compiled at an earlier launch
+        // is read back as it is — ready before the first page asks for it —
+        // and compiled again only when the rules themselves change.
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in json.utf8 { hash = (hash ^ UInt64(byte)) &* 1_099_511_628_211 }
+        let name = "office-shield-\(String(hash, radix: 36))"
+        store.lookUpContentRuleList(forIdentifier: name) { [weak self] kept, _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if let kept {
+                    self.ready(kept)
+                } else {
+                    self.build(json, named: name, in: store)
+                }
+            }
+        }
+    }
+
+    private func ready(_ compiled: WKContentRuleList) {
+        list = compiled
+        // Tabs that opened while this was still coming get it now.
+        if enabled { waiting.forEach { $0.add(compiled) } }
+        waiting = []
+    }
+
+    private func build(_ json: String, named name: String, in store: WKContentRuleListStore) {
+        // Lists compiled from older rules, cleared out as the new one goes in.
+        store.getAvailableContentRuleListIdentifiers { names in
+            for old in names ?? [] where old.hasPrefix("office-shield") && old != name {
+                store.removeContentRuleList(forIdentifier: old) { _ in }
+            }
+        }
         store.compileContentRuleList(
-            forIdentifier: "office-shield",
+            forIdentifier: name,
             encodedContentRuleList: json
         ) { [weak self] compiled, error in
             MainActor.assumeIsolated {
@@ -118,10 +180,7 @@ final class Shield: ObservableObject {
                     self.trouble = error?.localizedDescription ?? "Compiling the block list failed"
                     return
                 }
-                self.list = compiled
-                // Tabs that opened while this was still compiling get it now.
-                if self.enabled { self.waiting.forEach { $0.add(compiled) } }
-                self.waiting = []
+                self.ready(compiled)
             }
         }
     }

@@ -269,6 +269,9 @@ struct ContentView: View {
     @State private var roomTicket = 0
     /// The window's size, for pieces drawing their part of the wallpaper.
     @State private var canvas: CGSize = .zero
+    @ObservedObject private var wallpaper = Wallpaper.shared
+    /// The column was folded by going full screen, and comes back on leaving.
+    @State private var foldedForFullScreen = false
 
     /// Where the wallpaper lies: centred on the address field — the middle
     /// of the page beside the column, lifted as the field is — and grown
@@ -478,11 +481,18 @@ struct ContentView: View {
 
     var body: some View {
         window_
-            .background(GeometryReader { geo in
-                Color.clear
-                    .onAppear { canvas = geo.size }
-                    .onChange(of: geo.size) { _, size in canvas = size }
-            }.ignoresSafeArea())
+            // Measured only while there is a wallpaper to lay across it: a
+            // window being resized otherwise redraws everything on every step.
+            .background {
+                if wallpaper.picture != nil {
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { canvas = geo.size }
+                            .onChange(of: geo.size) { _, size in canvas = size }
+                    }
+                    .ignoresSafeArea()
+                }
+            }
             // The column folded away, and out again at the edge (see Fold.swift).
             .overlay(alignment: .leading) { Fold(browser: browser, prefs: browser.prefs) }
             .overlay(alignment: .bottom) { bars }
@@ -515,6 +525,22 @@ struct ContentView: View {
                 resting?.isHidden = false
                 // Only the window you were in, or every window's video would come.
                 browser.appLeft()
+            }
+            // Full screen, the column folds away like the strip does: out at
+            // the left edge when the pointer goes there, back to stay when
+            // the window leaves full screen.
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { note in
+                guard let window, (note.object as? NSWindow) === window,
+                      browser.prefs.sidebar, !browser.folded else { return }
+                foldedForFullScreen = true
+                browser.peeking = false
+                withAnimation(Motion.glide) { browser.folded = true }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { note in
+                guard let window, (note.object as? NSWindow) === window, foldedForFullScreen else { return }
+                foldedForFullScreen = false
+                browser.peeking = false
+                withAnimation(Motion.glide) { browser.folded = false }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
                 if let window, (note.object as? NSWindow) === window { Browser.front = browser }

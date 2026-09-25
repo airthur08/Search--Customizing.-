@@ -50,7 +50,7 @@ struct SideBar: View {
                 DragStrip()
                     .frame(width: 10 + Metrics.sideLights)
                 Color.clear
-                    .frame(width: Metrics.helm)
+                    .frame(width: prefs.sideCollapsed ? 0 : Metrics.helm)
                     .allowsHitTesting(false)
                 DragStrip()
             }
@@ -62,7 +62,7 @@ struct SideBar: View {
                 // bar, moved beside the lights since there's no far end of a
                 // row to put them at in this mode.
                 HStack(spacing: 0) {
-                    Color.clear.frame(width: Metrics.sideLights)
+                    Color.clear.frame(width: prefs.sideCollapsed ? 0 : Metrics.sideLights)
                     // Collapsed, the lights take the band; ⌘[ and ⌘] still go.
                     if !prefs.sideCollapsed { Helm(browser: browser) }
                     Spacer(minLength: 0)
@@ -85,7 +85,7 @@ struct SideBar: View {
                 foot
             }
         }
-        .frame(width: prefs.sideShown)
+        .frame(width: prefs.sideShown, alignment: .leading)
         .frame(maxHeight: .infinity)
         // Rows on their way to or from another space stay in the column.
         .clipped()

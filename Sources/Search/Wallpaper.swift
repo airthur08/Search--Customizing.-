@@ -134,7 +134,9 @@ final class Wallpaper: ObservableObject {
         // size is a hundred megabytes of memory for a background.
         let shown = Self.scaled(image, longest: 3200)
         picture = shown
-        frosted = Self.frost(shown)
+        // Blurred, it may as well be small: a frost from a 900-point copy looks
+        // the same and is a tenth of the memory to composite under the tabs.
+        frosted = Self.frost(Self.scaled(shown, longest: 900))
         measured = Self.measure(shown)
         judge()
     }
