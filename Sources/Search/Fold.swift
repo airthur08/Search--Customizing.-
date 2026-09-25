@@ -184,7 +184,7 @@ struct Fold: View {
             let top = NSWindow.windowNumber(at: screen, belowWindowWithWindowNumber: 0)
             let onWindow = top == window.windowNumber
             let onOwnPanel = !onWindow && NSApp.windows.contains { $0.windowNumber == top }
-            let reach = prefs.sidebar ? prefs.sideWidth : Metrics.strip
+            let reach = prefs.sidebar ? prefs.sideShown : Metrics.strip
             let over = onOwnPanel || (onWindow && inWindow && distance < reach)
             if over != inside { inside = over }
             peek(over)
@@ -248,7 +248,7 @@ struct Fold: View {
     private func hideLights() {
         guard let bar = Fold.titlebar else { return }
         if prefs.sidebar {
-            Fold.slide(bar, off: lightsOff, by: prefs.sideWidth)
+            Fold.slide(bar, off: lightsOff, by: prefs.sideShown)
         } else {
             Fold.slide(bar, off: lightsOff, by: Metrics.strip, up: true)
         }

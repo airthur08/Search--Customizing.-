@@ -11,6 +11,7 @@ struct SideBar: View {
     @ObservedObject var prefs: Preferences
 
     @Namespace private var pill
+    @ObservedObject private var wallpaper = Wallpaper.shared
 
     @State private var landing = false
     /// The width the column had when the edge was picked up.
@@ -31,7 +32,9 @@ struct SideBar: View {
     private static let row: CGFloat = 28
     private static let gap: CGFloat = 2
     private static let square: CGFloat = 34
-    private static let pinGap: CGFloat = 4
+    /// A pinned tile at its tallest: a wide, soft card holding the site's icon.
+    private static let tile: CGFloat = 54
+    private static let pinGap: CGFloat = 8
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -60,7 +63,8 @@ struct SideBar: View {
                 // row to put them at in this mode.
                 HStack(spacing: 0) {
                     Color.clear.frame(width: Metrics.sideLights)
-                    Helm(browser: browser)
+                    // Collapsed, the lights take the band; ⌘[ and ⌘] still go.
+                    if !prefs.sideCollapsed { Helm(browser: browser) }
                     Spacer(minLength: 0)
                 }
                 .frame(height: Metrics.strip)
@@ -81,16 +85,25 @@ struct SideBar: View {
                 foot
             }
         }
-        .frame(width: prefs.sideWidth)
+        .frame(width: prefs.sideShown)
         .frame(maxHeight: .infinity)
         // Rows on their way to or from another space stay in the column.
         .clipped()
         .onAppear { SpaceSwipe.shared.start(for: browser) }
-        .background(landing ? Palette.hover : Palette.ground)
-        .overlay(alignment: .trailing) {
-            Rectangle().fill(Palette.hairline).frame(width: 1)
+        .background {
+            if wallpaper.onChrome {
+                ZStack {
+                    GlassGround()
+                    if landing { Palette.hover(true) }
+                }
+            } else {
+                landing ? Palette.hover : Palette.ground
+            }
         }
-        .overlay(alignment: .trailing) { edge }
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(wallpaper.onChrome ? Palette.ink.opacity(0.1) : Palette.hairline).frame(width: 1)
+        }
+        .overlay(alignment: .trailing) { if !prefs.sideCollapsed { edge } }
         .onDrop(of: [.url, .text], isTargeted: $landing) { providers in
             browser.take(providers)
         }
@@ -99,6 +112,8 @@ struct SideBar: View {
         .animation(Motion.glide, value: browser.editingTab)
         .animation(Motion.settle, value: browser.tabs.map(\.id))
         .animation(Motion.settle, value: browser.pinnedCount)
+        .modifier(OnWallpaper(side: true))
+        .animation(Motion.glide, value: prefs.sideCollapsed)
     }
 
     /// The column's edge: pull it to make the column wider or narrower,
@@ -138,7 +153,7 @@ struct SideBar: View {
     }
 
     private var pages: some View {
-        let width = prefs.sideWidth
+        let width = prefs.sideShown
         let swipe = browser.spaceSwipe
         let at = spaceAt
         return ZStack(alignment: .topLeading) {
@@ -216,7 +231,7 @@ struct SideBar: View {
             }
         }
         .padding(.horizontal, 10)
-        .frame(width: prefs.sideWidth, alignment: .topLeading)
+        .frame(width: prefs.sideShown, alignment: .topLeading)
     }
 
     /// Another space's rows, drawn with the same pieces as this one's so the
@@ -225,9 +240,9 @@ struct SideBar: View {
     private func preview(_ row: Parked, pill: Namespace.ID) -> some View {
         let pins = row.tabs.filter { $0.pin != nil }
         let rest = row.tabs.filter { $0.pin == nil }
-        let cols = SideBar.pinColumns(pins.count)
+        let cols = columns(pins.count)
         let width = pinWidth(for: pins.count)
-        let height = min(SideBar.square, width)
+        let height = pinHeight(for: width)
         return VStack(alignment: .leading, spacing: 0) {
             if !pins.isEmpty {
                 VStack(spacing: 0) {
@@ -255,7 +270,7 @@ struct SideBar: View {
     /// frame late, and for one frame the whole column would drag the window.
     private var rowsEnd: CGFloat {
         let pins = browser.pinnedCount
-        let cols = SideBar.pinColumns(pins)
+        let cols = columns(pins)
         let pinRows = pins == 0 ? 0 : (pins + cols - 1) / cols
         let pinBlock = pinRows == 0 ? 0
             : CGFloat(pinRows) * pinHeight + CGFloat(pinRows - 1) * SideBar.pinGap + 10
@@ -274,7 +289,12 @@ struct SideBar: View {
     /// past six does the block widen, one column at a time, to stay at two
     /// rows for as long as that's a reasonable shape at all.
     private static func pinColumns(_ count: Int) -> Int {
-        max(3, (count + 1) / 2)
+        3
+    }
+
+    /// Collapsed, the pins stand one above the other.
+    private func columns(_ count: Int) -> Int {
+        prefs.sideCollapsed ? 1 : SideBar.pinColumns(count)
     }
 
     /// However many columns the count calls for, they split the row's own
@@ -284,9 +304,9 @@ struct SideBar: View {
     private var pinWidth: CGFloat { pinWidth(for: browser.pinnedCount) }
 
     private func pinWidth(for count: Int) -> CGFloat {
-        let cols = SideBar.pinColumns(count)
+        let cols = columns(count)
         guard cols > 0 else { return SideBar.square }
-        let available = prefs.sideWidth - 20 - CGFloat(cols - 1) * SideBar.pinGap
+        let available = prefs.sideShown - 20 - CGFloat(cols - 1) * SideBar.pinGap
         return max(20, available / CGFloat(cols))
     }
 
@@ -295,15 +315,17 @@ struct SideBar: View {
     /// rather than the wide, short button pinned tabs actually look like
     /// everywhere else in this app. It only shrinks below 34 alongside the
     /// width, once a narrow column leaves no other choice.
-    private var pinHeight: CGFloat {
-        min(SideBar.square, pinWidth)
+    private var pinHeight: CGFloat { pinHeight(for: pinWidth) }
+
+    private func pinHeight(for width: CGFloat) -> CGFloat {
+        min(SideBar.tile, width * 0.8)
     }
 
     /// The grid itself: fixed-size cells, left-aligned, so a half-empty last
     /// row holds its ground rather than stretching to fill it.
     private var pinned: some View {
         let tabs = pinnedTabs
-        let cols = SideBar.pinColumns(tabs.count)
+        let cols = columns(tabs.count)
         let width = pinWidth
         let height = pinHeight
         // Measured in the grid's own space, not the square's: a square that
@@ -430,20 +452,28 @@ struct SideBar: View {
     private static let footHeight: CGFloat = 26 + 10
 
     private var newTab: some View {
-        Quiet(icon: "plus", title: "New tab", height: SideBar.row) { browser.newTab() }
+        Quiet(icon: "plus", title: "New tab", height: SideBar.row, bare: prefs.sideCollapsed) { browser.newTab() }
             .padding(.top, SideBar.gap)
     }
 
     /// One small door at the bottom: the settings.
     private var foot: some View {
         HStack(spacing: 2) {
-            if browser.prefs.usesSpaces { SpaceDot(browser: browser) }
-            ExtensionSlot(edge: .trailing)
-            Door(icon: "bookmark", help: "Bookmarks") { browser.bookmarksOpen.toggle() }
-                .popover(isPresented: $browser.bookmarksOpen, arrowEdge: .trailing) {
-                    BookmarksDropdown(browser: browser, bookmarks: browser.bookmarks)
-                }
-            Spacer(minLength: 0)
+            if !prefs.sideCollapsed {
+                if browser.prefs.usesSpaces { SpaceDot(browser: browser) }
+                ExtensionSlot(edge: .trailing)
+                Door(icon: "bookmark", help: "Bookmarks") { browser.bookmarksOpen.toggle() }
+                    .popover(isPresented: $browser.bookmarksOpen, arrowEdge: .trailing) {
+                        BookmarksDropdown(browser: browser, bookmarks: browser.bookmarks)
+                    }
+                Spacer(minLength: 0)
+            }
+            // Down to the tabs' marks and back out again.
+            Door(icon: prefs.sideCollapsed ? "sidebar.right" : "sidebar.left",
+                 help: prefs.sideCollapsed ? "Expand Sidebar" : "Collapse Sidebar") {
+                withAnimation(Motion.glide) { prefs.sideCollapsed.toggle() }
+            }
+            .frame(maxWidth: prefs.sideCollapsed ? .infinity : nil)
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 10)
@@ -496,37 +526,47 @@ private struct PinSquare: View {
     var height: CGFloat = 34
 
     @State private var hovering = false
+    @Environment(\.glass) private var glass
 
     /// Everything drawn inside scales off the shorter edge — the one that
     /// stays put — so the glyph sits at its usual size, centred, rather than
     /// stretching to chase the width.
     private var scale: CGFloat { min(width, height) }
 
+    private var corner: CGFloat { min(12, scale * 0.26) }
+
     var body: some View {
         Group {
             if browser.editingPin == tab.id {
                 PinField(browser: browser, tab: tab)
-            } else if prefs.glyph == .icons, let icon = tab.icon {
-                Mark(icon: icon, letter: tab.pin ?? "", size: scale * 16 / 34, dim: tab.asleep)
+                    .frame(width: scale * 16 / 34, height: scale * 16 / 34)
+            } else if let icon = tab.icon {
+                // The site's own icon, whatever the tabs wear elsewhere: a
+                // tile is recognised by its picture.
+                Mark(icon: icon, letter: tab.pin ?? "", size: min(24, scale * 0.46), dim: tab.asleep)
             } else {
                 Text(tab.pin ?? "")
-                    .font(.system(size: scale * 12 / 34, weight: .medium))
+                    .font(.system(size: min(17, scale * 0.34), weight: .semibold))
                     .foregroundStyle((live ? Palette.ink : Palette.muted).opacity(tab.asleep ? 0.45 : 1))
             }
         }
-        .frame(width: scale * 16 / 34, height: scale * 16 / 34)
         .frame(width: width, height: height)
         .background {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(Palette.ink.opacity(hovering ? 0.09 : 0.055))
             if live {
-                RoundedRectangle(cornerRadius: scale * 9 / 34, style: .continuous)
-                    .fill(Palette.wash)
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .fill(Palette.wash(glass))
                     .matchedGeometryEffect(id: "live", in: pill)
-            } else {
-                RoundedRectangle(cornerRadius: scale * 9 / 34, style: .continuous)
-                    .fill(hovering ? Palette.hover : Palette.wash.opacity(0.55))
             }
         }
-        .contentShape(RoundedRectangle(cornerRadius: scale * 9 / 34, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .strokeBorder(Palette.ink.opacity(live ? 0.16 : (hovering ? 0.12 : 0.07)), lineWidth: 1)
+                .allowsHitTesting(false)
+        )
+        .shadow(color: .black.opacity(live ? 0.12 : 0.05), radius: live ? 6 : 3, y: live ? 2 : 1)
+        .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
         .modifier(OneClick(double: live) {
             if live { browser.editLetter(tab) } else { browser.select(tab) }
         })
@@ -550,9 +590,10 @@ private struct SideRow: View {
     let close: () -> Void
 
     @State private var hovering = false
+    @Environment(\.glass) private var glass
     @State private var shake: CGFloat = 0
 
-    private var editing: Bool { browser.editingTab == tab.id }
+    private var editing: Bool { browser.editingTab == tab.id && !prefs.sideCollapsed }
 
     /// The ring or the speaker, which stay for as long as the page loads or
     /// plays (or is muted) and so keep a place of their own at the end of the
@@ -563,6 +604,33 @@ private struct SideRow: View {
     private var speaker: Bool { !tab.loading && (tab.noisy || tab.muted) }
 
     var body: some View {
+        if prefs.sideCollapsed { collapsed } else { full }
+    }
+
+    /// Collapsed: the site's mark or letter, centred, and the title on hover.
+    private var collapsed: some View {
+        ZStack {
+            if tab.loading {
+                Ring()
+            } else {
+                Mark(icon: tab.isBlank ? nil : tab.icon, letter: tab.monogram, size: 15)
+                    .opacity(live || hovering ? 1 : 0.8)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
+        .background { ground }
+        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .modifier(OneClick(double: false) { browser.select(tab) })
+        .overlay { MiddleClick(act: close) }
+        .onHover { hovering = $0 }
+        .help(tab.label)
+        .contextMenu { TabMenu(browser: browser, tab: tab, close: close) }
+        .animation(Motion.quick, value: hovering)
+        .transition(.scale(scale: 0.94).combined(with: .opacity))
+    }
+
+    private var full: some View {
         HStack(spacing: 8) {
             if editing {
                 TabAddressField(browser: browser)
@@ -671,7 +739,7 @@ private struct SideRow: View {
     private var ground: some View {
         if live {
             ZStack(alignment: .leading) {
-                Rectangle().fill(Palette.wash)
+                Rectangle().fill(Palette.wash(glass))
                 if prefs.showsReading {
                     GeometryReader { geo in
                         Rectangle()
@@ -685,7 +753,7 @@ private struct SideRow: View {
             .matchedGeometryEffect(id: "live", in: pill)
         } else if hovering {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Palette.hover)
+                .fill(Palette.hover(glass))
         }
     }
 
@@ -700,27 +768,34 @@ struct Quiet: View {
     let icon: String
     let title: String
     var height: CGFloat = 28
+    /// The icon alone, centred, for the collapsed column.
+    var bare = false
     let act: () -> Void
 
     @State private var hovering = false
+    @Environment(\.glass) private var glass
 
     var body: some View {
         Button(action: act) {
             HStack(spacing: 8) {
+                if bare { Spacer(minLength: 0) }
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .medium))
                     .frame(width: 15)
-                Text(title)
-                    .font(.system(size: 12.5))
+                if !bare {
+                    Text(title)
+                        .font(.system(size: 12.5))
+                }
                 Spacer(minLength: 0)
             }
             .foregroundStyle(hovering ? Palette.ink.opacity(0.7) : Palette.faint)
-            .padding(.leading, 10)
+            .padding(.leading, bare ? 0 : 10)
+            .help(bare ? title : "")
             .frame(height: height)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(hovering ? Palette.hover : .clear)
+                    .fill(hovering ? Palette.hover(glass) : .clear)
             )
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
@@ -763,6 +838,7 @@ struct Door: View {
     let act: () -> Void
 
     @State private var hovering = false
+    @Environment(\.glass) private var glass
 
     var body: some View {
         Button(action: act) {
@@ -772,7 +848,7 @@ struct Door: View {
                 .frame(width: 26, height: 26)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(on ? Palette.wash : (hovering ? Palette.hover : .clear))
+                        .fill(on ? Palette.wash(glass) : (hovering ? Palette.hover(glass) : .clear))
                 )
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }

@@ -17,6 +17,7 @@ struct Omnibox: View {
 
     @State private var shake: CGFloat = 0
     @State private var refused = false
+    @ObservedObject private var wallpaper = Wallpaper.shared
 
     var body: some View {
         ZStack {
@@ -83,7 +84,7 @@ struct Omnibox: View {
                     )
                     .allowsHitTesting(false)
             )
-            .shadow(color: .black.opacity(0.06), radius: 24, y: 8)
+            .shadow(color: .black.opacity(wallpaper.picture != nil && !over ? 0.22 : 0.06), radius: 24, y: 8)
             .modifier(Shake(travel: shake))
             .onChange(of: browser.refusals) { _, _ in
                 shake = 0
@@ -271,7 +272,7 @@ struct AddressField: NSViewRepresentable {
         // SwiftUI picks its own colour for a placeholder, and on a pale ground
         // that colour was near-white.
         field.placeholderAttributedString = NSAttributedString(
-            string: "Enter a web address",
+            string: "Search or enter a web address",
             attributes: [
                 .font: NSFont.systemFont(ofSize: 15.5),
                 .foregroundColor: NSColor(Palette.ink.opacity(0.3)),

@@ -14,6 +14,12 @@ struct Page: View {
 
     var body: some View {
         ZStack {
+            // Your own picture behind an empty tab (see Wallpaper.swift).
+            if tab.isBlank, !tab.floating {
+                WallpaperFill()
+                    .transition(.opacity)
+            }
+
             // A tab put down with ⌘W has no view, and asking for one here
             // would build an empty one a frame before the stage moves on.
             //
@@ -66,6 +72,7 @@ struct Page: View {
         }
         .animation(Motion.quick, value: tab.failure)
         .animation(Motion.quick, value: tab.floating)
+        .animation(Motion.quick, value: tab.isBlank)
         .animation(.easeOut(duration: 0.2), value: tab.cover == nil)
         .animation(.easeOut(duration: 0.16), value: tab.pull == nil)
     }

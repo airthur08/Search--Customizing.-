@@ -267,6 +267,20 @@ struct ContentView: View {
     /// animation (see `make(room:after:)`); nil only before the window is up.
     @State private var room: CGSize?
     @State private var roomTicket = 0
+    /// The window's size, for pieces drawing their part of the wallpaper.
+    @State private var canvas: CGSize = .zero
+
+    /// Where the wallpaper lies: centred on the address field — the middle
+    /// of the page beside the column, lifted as the field is — and grown
+    /// from there until it covers the whole window.
+    private var wallpaperArea: CGRect {
+        guard canvas != .zero else { return .zero }
+        let x = chrome.width + (canvas.width - chrome.width) / 2
+        let y = canvas.height / 2 - 30
+        let w = 2 * max(x, canvas.width - x)
+        let h = 2 * max(y, canvas.height - y)
+        return CGRect(x: x - w / 2, y: y - h / 2, width: w, height: h)
+    }
 
 
     /// The window: room at the top, one stage for the page, and the row when
@@ -347,7 +361,7 @@ struct ContentView: View {
     /// What the column and the strip take from the page right now: animated
     /// as they come and go.
     private var chrome: CGSize {
-        CGSize(width: sidebar ? browser.prefs.sideWidth : 0, height: band + (barShown ? BookmarksBar.height : 0))
+        CGSize(width: sidebar ? browser.prefs.sideShown : 0, height: band + (barShown ? BookmarksBar.height : 0))
     }
 
     /// The bookmarks bar is up: asked for, there are bookmarks, and the tabs
@@ -415,7 +429,7 @@ struct ContentView: View {
                 // Centred on the page, not on the window. The column of tabs
                 // is not what the field is standing over, and dimming it along
                 // with the page says otherwise.
-                .padding(.leading, sidebar ? browser.prefs.sideWidth : 0)
+                .padding(.leading, sidebar ? browser.prefs.sideShown : 0)
                 .transition(.scale(scale: 0.97).combined(with: .opacity))
         }
     }
@@ -464,6 +478,11 @@ struct ContentView: View {
 
     var body: some View {
         window_
+            .background(GeometryReader { geo in
+                Color.clear
+                    .onAppear { canvas = geo.size }
+                    .onChange(of: geo.size) { _, size in canvas = size }
+            }.ignoresSafeArea())
             // The column folded away, and out again at the edge (see Fold.swift).
             .overlay(alignment: .leading) { Fold(browser: browser, prefs: browser.prefs) }
             .overlay(alignment: .bottom) { bars }
@@ -479,6 +498,7 @@ struct ContentView: View {
             }
             .overlay { field }
             .overlay { panels }
+            .environment(\.canvas, wallpaperArea)
             // The field comes on its spring, and goes quickly: once Return
             // is pressed the page is on its way, and the field is not what
             // there is to watch.

@@ -138,6 +138,8 @@ enum Metrics {
     static let side: CGFloat = 232
     static let sideMin: CGFloat = 176
     static let sideMax: CGFloat = 440
+    /// Collapsed to the marks: just wide enough for the traffic lights.
+    static let sideCollapsed: CGFloat = 84
 }
 
 // One spring for anything that moves between two places, one for anything that

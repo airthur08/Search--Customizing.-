@@ -59,6 +59,12 @@ final class Preferences: ObservableObject {
     @Published var sideWidth: CGFloat {
         didSet { store.set(Double(sideWidth), forKey: "sidebar.width") }
     }
+    /// The column narrowed to the tabs' marks alone, by the button at its foot.
+    @Published var sideCollapsed: Bool {
+        didSet { store.set(sideCollapsed, forKey: "sidebar.collapsed") }
+    }
+    /// How wide the column is on screen: its own width, or the marks' only.
+    var sideShown: CGFloat { sideCollapsed ? Metrics.sideCollapsed : sideWidth }
     @Published var glyph: Glyph {
         didSet { store.set(glyph.rawValue, forKey: "glyph") }
     }
@@ -232,6 +238,7 @@ final class Preferences: ObservableObject {
         sideHides = store.bool(forKey: "sidebar.hides")
         let width = store.object(forKey: "sidebar.width") as? Double ?? Double(Metrics.side)
         sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
+        sideCollapsed = store.bool(forKey: "sidebar.collapsed")
         glyph = store.string(forKey: "glyph").flatMap(Glyph.init) ?? .letters
         engine = store.string(forKey: "search.engine").flatMap(Engine.init) ?? .standard
         customEngine = store.string(forKey: "search.custom") ?? ""

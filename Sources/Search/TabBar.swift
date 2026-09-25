@@ -5,6 +5,7 @@ import SwiftUI
 /// of one and into the other.
 struct TabBar: View {
     @ObservedObject var browser: Browser
+    @ObservedObject private var wallpaper = Wallpaper.shared
 
     @Namespace private var pill
     /// The neighbouring spaces' own grey, apart from this one's.
@@ -113,7 +114,7 @@ struct TabBar: View {
                             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                             .background(
                                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .fill(plussed ? Palette.hover : .clear)
+                                    .fill(plussed ? Palette.hover(wallpaper.onChrome) : .clear)
                             )
                     }
                     .buttonStyle(.plain)
@@ -160,7 +161,11 @@ struct TabBar: View {
         .onDrop(of: [.url, .text], isTargeted: $landing) { providers in
             browser.take(providers)
         }
-        .background(landing ? Palette.hover : .clear)
+        .background(landing ? Palette.hover(wallpaper.onChrome) : .clear)
+        // Over your picture, the strip brings a frosted piece of it along,
+        // so it reads the same in the window and folded out over a page.
+        .background { if wallpaper.onChrome { GlassGround() } }
+        .modifier(OnWallpaper(side: false))
         .animation(Motion.quick, value: landing)
         .animation(Motion.glide, value: browser.activeID)
         // The row makes room for the field on the same spring as everything
@@ -347,6 +352,7 @@ private struct TabPill: View {
     let pill: Namespace.ID
     let close: () -> Void
 
+    @Environment(\.glass) private var glass
     @State private var hovering = false
     @State private var shake: CGFloat = 0
 
@@ -535,7 +541,7 @@ private struct TabPill: View {
             // the one thing in the window that says how far in you are, and
             // it says it without adding anything to the window.
             ZStack(alignment: .leading) {
-                Rectangle().fill(Palette.wash)
+                Rectangle().fill(Palette.wash(glass))
                 // Not on a pinned square, nor a tab down to its mark. Thirty
                 // points of grey filling from the left behind a single letter
                 // says nothing about anything — it needs the width of a title
@@ -551,13 +557,13 @@ private struct TabPill: View {
             .matchedGeometryEffect(id: "live", in: pill)
         } else if hovering {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Palette.hover)
+                .fill(Palette.hover(glass))
         } else if pinned {
             // A letter with nothing behind it reads as debris. A pinned tab
             // keeps a faint ground of its own so the block of them reads as
             // one thing.
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Palette.wash.opacity(0.55))
+                .fill(Palette.wash(glass).opacity(0.55))
         }
     }
 

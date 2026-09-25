@@ -54,7 +54,7 @@ final class SpaceSwipe {
     /// Where the tabs are: the column, or the bar across the top.
     private func overTabs(_ event: NSEvent, in browser: Browser) -> Bool {
         guard event.window === Links.window, let window = event.window else { return false }
-        if browser.prefs.sidebar { return event.locationInWindow.x < browser.prefs.sideWidth }
+        if browser.prefs.sidebar { return event.locationInWindow.x < browser.prefs.sideShown }
         return event.locationInWindow.y > window.frame.height - Metrics.strip
     }
 
@@ -167,7 +167,7 @@ final class SpaceSwipe {
     /// the last space is the card for a new one.
     func slide(_ browser: Browser, to target: Int, from here: Int) {
         // A page is the column's width, or the bar's height.
-        let width = browser.prefs.sidebar ? browser.prefs.sideWidth : Metrics.strip
+        let width = browser.prefs.sidebar ? browser.prefs.sideShown : Metrics.strip
         let away: CGFloat = target > here ? -1 : 1
         browser.spaceStep = target > here ? 1 : -1
         resting = Date().addingTimeInterval(SpaceSwipe.rest)
